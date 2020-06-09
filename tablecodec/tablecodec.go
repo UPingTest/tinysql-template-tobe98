@@ -40,6 +40,7 @@ const (
 	idLen     = 8
 	prefixLen = 1 + idLen /*tableID*/ + 2
 	// RecordRowKeyLen is public for calculating avgerage row size.
+	// RecordRowKry example: t{tableID}_r{rowID}
 	RecordRowKeyLen       = prefixLen + idLen /*handle*/
 	tablePrefixLength     = 1
 	recordPrefixSepLength = 2
@@ -70,9 +71,36 @@ func EncodeRowKeyWithHandle(tableID int64, handle int64) kv.Key {
 }
 
 // DecodeRecordKey decodes the key and gets the tableID, handle.
+// record key example: t{tableID}_r{handle}
 func DecodeRecordKey(key kv.Key) (tableID int64, handle int64, err error) {
 	/* Your code here */
-	return
+	if len(key) != RecordRowKeyLen {
+		return 0, 0, errInvalidRecordKey
+	}
+
+	curTablePrefix := key[:tablePrefixLength]
+	if !bytes.Equal(curTablePrefix, tablePrefix) {
+		return 0, 0, errInvalidRecordKey
+	}
+
+	tableIDCode := key[tablePrefixLength : tablePrefixLength+idLen]
+	_, tableID, err = codec.DecodeInt(tableIDCode)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	curRecordPrefixSep := key[tablePrefixLength+idLen : prefixLen]
+	if !bytes.Equal(curRecordPrefixSep, recordPrefixSep) {
+		return 0, 0, errInvalidRecordKey
+	}
+
+	handleCode := key[prefixLen:RecordRowKeyLen]
+	_, handle, err = codec.DecodeInt(handleCode)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	return tableID, handle, nil
 }
 
 // appendTableIndexPrefix appends table index prefix  "t[tableID]_i".
@@ -93,8 +121,37 @@ func EncodeIndexSeekKey(tableID int64, idxID int64, encodedValue []byte) kv.Key 
 }
 
 // DecodeIndexKeyPrefix decodes the key and gets the tableID, indexID, indexValues.
+// index key example: t{tableID}_i{idxID}{encodedValue}
 func DecodeIndexKeyPrefix(key kv.Key) (tableID int64, indexID int64, indexValues []byte, err error) {
 	/* Your code here */
+	if len(key) < RecordRowKeyLen {
+		return 0, 0, nil, errInvalidRecordKey
+	}
+
+	curTablePrefix := key[:tablePrefixLength]
+	if !bytes.Equal(curTablePrefix, tablePrefix) {
+		return 0, 0, nil, errInvalidRecordKey
+	}
+
+	tableIDCode := key[tablePrefixLength : tablePrefixLength+idLen]
+	_, tableID, err = codec.DecodeInt(tableIDCode)
+	if err != nil {
+		return 0, 0, nil, err
+	}
+
+	curIndexPrefixSep := key[tablePrefixLength+idLen : prefixLen]
+	if !bytes.Equal(curIndexPrefixSep, indexPrefixSep) {
+		return 0, 0, nil, errInvalidRecordKey
+	}
+
+	idxIDCode := key[prefixLen:RecordRowKeyLen]
+	_, indexID, err = codec.DecodeInt(idxIDCode)
+	if err != nil {
+		return 0, 0, nil, err
+	}
+
+	indexValues = key[RecordRowKeyLen:]
+
 	return tableID, indexID, indexValues, nil
 }
 
